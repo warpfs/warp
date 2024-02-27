@@ -7,9 +7,29 @@ on:
     branches:
     - main
 jobs:
-  build:
-    name: Build
+  linux:
+    name: Build (Linux)
     runs-on: ubuntu-latest
+    steps:
+    - name: Check out source
+      uses: actions/checkout@v4
+    - name: Check Rust styles
+      run: cargo fmt --check
+    - name: Lint
+      run: cargo clippy -- -D warnings
+  mac:
+    name: Build (Mac)
+    runs-on: macos-latest
+    steps:
+    - name: Check out source
+      uses: actions/checkout@v4
+    - name: Check Rust styles
+      run: cargo fmt --check
+    - name: Lint
+      run: cargo clippy -- -D warnings
+  windows:
+    name: Build (Windows)
+    runs-on: windows-latest
     steps:
     - name: Check out source
       uses: actions/checkout@v4
