@@ -19,7 +19,7 @@ impl HttpClient {
     pub fn new() -> Result<Self, NewError> {
         Ok(Self {
             #[cfg(windows)]
-            session: winhttp_open(None).map_err(NewError::CreateWinHttpSessionFailed)?,
+            session: Self::winhttp_open(None).map_err(NewError::CreateWinHttpSessionFailed)?,
         })
     }
 

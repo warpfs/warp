@@ -12,7 +12,7 @@ pub struct Request<'a> {
     request: crate::winhttp::Handle, // Must be dropped before connection.
     #[cfg(windows)]
     connection: crate::winhttp::Handle, // Must be dropped last.
-    phantom: PhantomData<Rc<&'a HttpClient>>,
+    phantom: PhantomData<&'a HttpClient>,
 }
 
 impl<'a> Request<'a> {
@@ -27,7 +27,9 @@ impl<'a> Request<'a> {
         url.set_password(None).unwrap();
 
         // Create CURL session.
-        let mut session = Easy2::new(Handler {});
+        let mut session = Easy2::new(Handler {
+            phantom: PhantomData,
+        });
 
         session.url(url.as_str()).unwrap();
         session.follow_location(true).unwrap();
@@ -132,6 +134,7 @@ impl<'a> Request<'a> {
             Ok(Self {
                 request: unsafe { crate::winhttp::Handle::new(request) },
                 connection,
+                phantom: PhantomData,
             })
         }
     }
@@ -163,7 +166,9 @@ impl<'a> Request<'a> {
 
 /// An implementation of [`curl::easy::Handler`].
 #[cfg(unix)]
-struct Handler {}
+struct Handler {
+    phantom: PhantomData<Rc<()>>, // !Send & !Sync.
+}
 
 #[cfg(unix)]
 impl curl::easy::Handler for Handler {}
