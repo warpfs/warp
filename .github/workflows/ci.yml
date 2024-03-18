@@ -16,24 +16,20 @@ jobs:
     - name: Check Rust styles
       run: cargo fmt --check
     - name: Lint
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --workspace -- -D warnings
   mac:
     name: Build (Mac)
     runs-on: macos-latest
     steps:
     - name: Check out source
       uses: actions/checkout@v4
-    - name: Check Rust styles
-      run: cargo fmt --check
     - name: Lint
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --workspace -- -D warnings
   windows:
     name: Build (Windows)
     runs-on: windows-latest
     steps:
     - name: Check out source
       uses: actions/checkout@v4
-    - name: Check Rust styles
-      run: cargo fmt --check
     - name: Lint
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --workspace -- -D warnings
