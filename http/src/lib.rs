@@ -66,7 +66,7 @@ impl HttpClient {
         if session.is_null() {
             Err(std::io::Error::last_os_error())
         } else {
-            Ok(winhttp::Handle::new(session))
+            Ok(unsafe { winhttp::Handle::new(session) })
         }
     }
 }

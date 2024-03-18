@@ -1,6 +1,6 @@
 use crate::{HttpClient, RequestError, Response};
 use http::Method;
-use std::{marker::PhantomData, rc::Rc};
+use std::marker::PhantomData;
 use thiserror::Error;
 use url::Url;
 
@@ -167,7 +167,7 @@ impl<'a> Request<'a> {
 /// An implementation of [`curl::easy::Handler`].
 #[cfg(unix)]
 struct Handler {
-    phantom: PhantomData<Rc<()>>, // !Send & !Sync.
+    phantom: PhantomData<std::rc::Rc<()>>, // !Send & !Sync.
 }
 
 #[cfg(unix)]
