@@ -11,6 +11,7 @@ pub struct Request<'a> {
     #[cfg(windows)]
     request: crate::winhttp::Handle, // Must be dropped before connection.
     #[cfg(windows)]
+    #[allow(dead_code)]
     connection: crate::winhttp::Handle, // Must be dropped last.
     phantom: PhantomData<&'a HttpClient>,
 }
