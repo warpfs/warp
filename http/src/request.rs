@@ -33,6 +33,8 @@ impl<'a> Request<'a> {
         });
 
         session.url(url.as_str()).unwrap();
+        session.path_as_is(true).unwrap();
+        session.autoreferer(true).unwrap();
         session.follow_location(true).unwrap();
 
         match method {
@@ -58,19 +60,11 @@ impl<'a> Request<'a> {
         use std::io::Error;
         use std::ptr::null;
         use windows_sys::w;
+        use windows_sys::Win32::Foundation::FALSE;
         use windows_sys::Win32::Networking::WinHttp::{
-            WinHttpConnect, WinHttpOpenRequest, WINHTTP_FLAG_ESCAPE_DISABLE,
+            WinHttpConnect, WinHttpOpenRequest, WINHTTP_ADDREQ_FLAG_ADD,
+            WINHTTP_ADDREQ_FLAG_REPLACE, WINHTTP_FLAG_ESCAPE_DISABLE,
             WINHTTP_FLAG_ESCAPE_DISABLE_QUERY, WINHTTP_FLAG_SECURE,
-        };
-
-        // Get method.
-        let method = match method {
-            Method::DELETE => w!("DELETE"),
-            Method::GET => w!("GET"),
-            Method::PATCH => w!("PATCH"),
-            Method::POST => w!("POST"),
-            Method::PUT => w!("PUT"),
-            _ => return Err(RequestError::UnsupportedMethod),
         };
 
         // Is it possible for HTTP URL without host?
@@ -118,7 +112,14 @@ impl<'a> Request<'a> {
         let request = unsafe {
             WinHttpOpenRequest(
                 connection.get(),
-                method,
+                match method {
+                    Method::DELETE => w!("DELETE"),
+                    Method::GET => w!("GET"),
+                    Method::PATCH => w!("PATCH"),
+                    Method::POST => w!("POST"),
+                    Method::PUT => w!("PUT"),
+                    _ => return Err(RequestError::UnsupportedMethod),
+                },
                 path.as_ptr(),
                 null(),
                 null(),
@@ -128,12 +129,31 @@ impl<'a> Request<'a> {
         };
 
         if request.is_null() {
-            Err(RequestError::WinHttpOpenRequestFailed(
+            return Err(RequestError::WinHttpOpenRequestFailed(
+                Error::last_os_error(),
+            ));
+        }
+
+        // Set default content type for POST.
+        let request = unsafe { crate::winhttp::Handle::new(request) };
+
+        if method == Method::POST
+            && unsafe {
+                WinHttpAddRequestHeaders(
+                    request.get(),
+                    w!("Content-Type: application/x-www-form-urlencoded"),
+                    u32::MAX,
+                    WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE,
+                ) == FALSE
+            }
+        {
+            Err(RequestError::WinHttpAddRequestHeadersFailed(
+                "Content-Type: application/x-www-form-urlencoded",
                 Error::last_os_error(),
             ))
         } else {
             Ok(Self {
-                request: unsafe { crate::winhttp::Handle::new(request) },
+                request,
                 connection,
                 phantom: PhantomData,
             })

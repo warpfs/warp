@@ -101,4 +101,8 @@ pub enum RequestError {
     #[cfg(windows)]
     #[error("WinHttpOpenRequest was failed")]
     WinHttpOpenRequestFailed(#[source] std::io::Error),
+
+    #[cfg(windows)]
+    #[error("WinHttpAddRequestHeaders was failed ({0})")]
+    WinHttpAddRequestHeadersFailed(&'static str, #[source] std::io::Error),
 }
