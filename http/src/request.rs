@@ -62,7 +62,7 @@ impl<'a> Request<'a> {
         use windows_sys::w;
         use windows_sys::Win32::Foundation::FALSE;
         use windows_sys::Win32::Networking::WinHttp::{
-            WinHttpConnect, WinHttpOpenRequest, WINHTTP_ADDREQ_FLAG_ADD,
+            WinHttpAddRequestHeaders, WinHttpConnect, WinHttpOpenRequest, WINHTTP_ADDREQ_FLAG_ADD,
             WINHTTP_ADDREQ_FLAG_REPLACE, WINHTTP_FLAG_ESCAPE_DISABLE,
             WINHTTP_FLAG_ESCAPE_DISABLE_QUERY, WINHTTP_FLAG_SECURE,
         };
