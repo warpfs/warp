@@ -180,25 +180,28 @@ impl<'a> Request<'a> {
                 }
 
                 // Set Content-Length.
-                TryInto::<u32>::try_into(body.len).unwrap_or_else(|_| {
-                    let header: Vec<u16> = format!("Content-Length: {}", body.len)
-                        .encode_utf16()
-                        .collect();
+                match TryInto::<u32>::try_into(body.len) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        let header: Vec<u16> = format!("Content-Length: {}", body.len)
+                            .encode_utf16()
+                            .collect();
 
-                    if unsafe {
-                        WinHttpAddRequestHeaders(
-                            request.get(),
-                            header.as_ptr(),
-                            header.len().try_into().unwrap(),
-                            WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE,
-                        )
-                    } == FALSE
-                    {
-                        return Err(ExecError::SetContentLengthFailed(Error::last_os_error()));
+                        if unsafe {
+                            WinHttpAddRequestHeaders(
+                                request.get(),
+                                header.as_ptr(),
+                                header.len().try_into().unwrap(),
+                                WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE,
+                            )
+                        } == FALSE
+                        {
+                            return Err(ExecError::SetContentLengthFailed(Error::last_os_error()));
+                        }
+
+                        WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH
                     }
-
-                    WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH
-                })
+                }
             }
         };
 
