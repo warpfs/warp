@@ -1,6 +1,5 @@
 pub use self::request::*;
 pub use self::response::*;
-use http::Method;
 use thiserror::Error;
 use url::Url;
 
@@ -23,19 +22,12 @@ impl HttpClient {
         })
     }
 
-    pub fn request(&self, method: Method, url: impl AsRef<Url>) -> Result<Request, RequestError> {
-        let url = url.as_ref();
-
+    pub fn request<'a>(&'a self, url: &'a Url) -> Result<Request<'a>, RequestError> {
         if !matches!(url.scheme(), "http" | "https") {
             return Err(RequestError::NotHttp);
         }
 
-        Request::new(
-            method,
-            url,
-            #[cfg(windows)]
-            &self.session,
-        )
+        Ok(Request::new(self, url))
     }
 
     #[cfg(windows)]
@@ -90,19 +82,4 @@ pub enum NewError {
 pub enum RequestError {
     #[error("the URL is not a HTTP URL")]
     NotHttp,
-
-    #[error("the specified method is not supported")]
-    UnsupportedMethod,
-
-    #[cfg(windows)]
-    #[error("WinHttpConnect was failed")]
-    WinHttpConnectFailed(#[source] std::io::Error),
-
-    #[cfg(windows)]
-    #[error("WinHttpOpenRequest was failed")]
-    WinHttpOpenRequestFailed(#[source] std::io::Error),
-
-    #[cfg(windows)]
-    #[error("WinHttpAddRequestHeaders was failed ({0})")]
-    WinHttpAddRequestHeadersFailed(&'static str, #[source] std::io::Error),
 }
