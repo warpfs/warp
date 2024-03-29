@@ -1,5 +1,6 @@
 use crate::{HttpClient, Response};
 use mime::Mime;
+use std::cmp::min;
 use std::io::Read;
 use thiserror::Error;
 use url::Url;
@@ -57,7 +58,7 @@ impl<'a> Request<'a> {
                 session.post(true).unwrap();
                 session.post_field_size(body.len).unwrap();
                 session.http_headers(headers).unwrap();
-                session.get_mut().request = Some(body.content);
+                session.get_mut().request = Some((body.content, body.len));
             }
         }
 
@@ -76,7 +77,7 @@ impl<'a> Request<'a> {
     #[cfg(windows)]
     pub fn exec<B: Read>(self, method: Method<B>) -> Result<Response, ExecError> {
         use crate::winhttp::Handle;
-        use std::io::Error;
+        use std::io::{Error, ErrorKind};
         use std::ptr::null;
         use windows_sys::w;
         use windows_sys::Win32::Foundation::FALSE;
@@ -210,6 +211,58 @@ impl<'a> Request<'a> {
             return Err(ExecError::WinHttpSendRequestFailed(Error::last_os_error()));
         }
 
+        // Write the body.
+        match method {
+            Method::Post(mut body) => {
+                let mut remaining = body.len;
+                let mut buf = vec![0u8; min(body.len, 1024 * 1024).try_into().unwrap()];
+
+                while remaining != 0 {
+                    // Read.
+                    let len = min(buf.len(), remaining.try_into().unwrap_or(usize::MAX));
+                    let read = match body.content.read(&mut buf[..len]) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            if e.kind() == ErrorKind::Interrupted {
+                                continue;
+                            }
+
+                            return Err(ExecError::ReadRequestFailed(e));
+                        }
+                    };
+
+                    if read == 0 {
+                        return Err(ExecError::ReadRequestFailed(Error::from(
+                            ErrorKind::UnexpectedEof,
+                        )));
+                    }
+
+                    // Write.
+                    let mut buf = &buf[..read];
+
+                    while !buf.is_empty() {
+                        let mut sent = 0;
+
+                        if unsafe {
+                            WinHttpWriteData(
+                                request.get(),
+                                buf.as_ptr().cast(),
+                                buf.len().try_into().unwrap(),
+                                &mut sent,
+                            )
+                        } == FALSE
+                        {
+                            return Err(ExecError::WinHttpWriteDataFailed(Error::last_os_error()));
+                        }
+
+                        buf = &buf[sent.try_into().unwrap()..];
+                    }
+
+                    remaining.sub_assign(TryInto::<u64>::try_into(read).unwrap());
+                }
+            }
+        }
+
         Ok(Response::new())
     }
 }
@@ -217,7 +270,7 @@ impl<'a> Request<'a> {
 /// An implementation of [`curl::easy::Handler`].
 #[cfg(unix)]
 struct Handler<R> {
-    request: Option<R>,
+    request: Option<(R, u64)>,
     error: Option<std::io::Error>,
 }
 
@@ -225,26 +278,43 @@ struct Handler<R> {
 impl<R: Read> curl::easy::Handler for Handler<R> {
     fn read(&mut self, data: &mut [u8]) -> Result<usize, curl::easy::ReadError> {
         use curl::easy::ReadError;
-        use std::io::ErrorKind;
+        use std::io::{Error, ErrorKind};
+        use std::ops::SubAssign;
 
         // Check if the request has body.
-        let body = match self.request.as_mut() {
+        let (body, remaining) = match self.request.as_mut() {
             Some(v) => v,
             None => return Ok(0),
         };
 
-        // Read the body.
-        loop {
-            let e = match body.read(data) {
-                Ok(v) => break Ok(v),
-                Err(e) => e,
-            };
-
-            if e.kind() != ErrorKind::Interrupted {
-                self.error = Some(e);
-                break Err(ReadError::Abort);
-            }
+        if *remaining == 0 {
+            return Ok(0);
         }
+
+        // Read the body.
+        let len = min(data.len(), (*remaining).try_into().unwrap_or(usize::MAX));
+        let read = loop {
+            match body.read(&mut data[..len]) {
+                Ok(v) => break v,
+                Err(e) => {
+                    if e.kind() == ErrorKind::Interrupted {
+                        continue;
+                    }
+
+                    self.error = Some(e);
+                    return Err(ReadError::Abort);
+                }
+            }
+        };
+
+        if read == 0 {
+            self.error = Some(Error::from(ErrorKind::UnexpectedEof));
+            return Err(ReadError::Abort);
+        }
+
+        remaining.sub_assign(TryInto::<u64>::try_into(read).unwrap());
+
+        Ok(read)
     }
 }
 
@@ -269,7 +339,6 @@ impl<'a, C> RequestBody<'a, C> {
 /// Represents an error when [`Request::exec()`] fails.
 #[derive(Debug, Error)]
 pub enum ExecError {
-    #[cfg(unix)]
     #[error("couldn't read the request body")]
     ReadRequestFailed(#[source] std::io::Error),
 
@@ -296,4 +365,8 @@ pub enum ExecError {
     #[cfg(windows)]
     #[error("WinHttpSendRequest was failed")]
     WinHttpSendRequestFailed(#[source] std::io::Error),
+
+    #[cfg(windows)]
+    #[error("WWinHttpWriteData was failed")]
+    WinHttpWriteDataFailed(#[source] std::io::Error),
 }
