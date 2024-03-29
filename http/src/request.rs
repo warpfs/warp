@@ -2,6 +2,7 @@ use crate::{HttpClient, Response};
 use mime::Mime;
 use std::cmp::min;
 use std::io::Read;
+use std::ops::SubAssign;
 use thiserror::Error;
 use url::Url;
 
@@ -83,8 +84,8 @@ impl<'a> Request<'a> {
         use windows_sys::Win32::Foundation::FALSE;
         use windows_sys::Win32::Networking::WinHttp::{
             WinHttpAddRequestHeaders, WinHttpConnect, WinHttpOpenRequest, WinHttpSendRequest,
-            WINHTTP_ADDREQ_FLAG_ADD, WINHTTP_ADDREQ_FLAG_REPLACE, WINHTTP_FLAG_ESCAPE_DISABLE,
-            WINHTTP_FLAG_ESCAPE_DISABLE_QUERY, WINHTTP_FLAG_SECURE,
+            WinHttpWriteData, WINHTTP_ADDREQ_FLAG_ADD, WINHTTP_ADDREQ_FLAG_REPLACE,
+            WINHTTP_FLAG_ESCAPE_DISABLE, WINHTTP_FLAG_ESCAPE_DISABLE_QUERY, WINHTTP_FLAG_SECURE,
             WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH,
         };
 
@@ -279,7 +280,6 @@ impl<R: Read> curl::easy::Handler for Handler<R> {
     fn read(&mut self, data: &mut [u8]) -> Result<usize, curl::easy::ReadError> {
         use curl::easy::ReadError;
         use std::io::{Error, ErrorKind};
-        use std::ops::SubAssign;
 
         // Check if the request has body.
         let (body, remaining) = match self.request.as_mut() {
