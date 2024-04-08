@@ -5,6 +5,4 @@ edition = "2021"
 
 [dependencies]
 clap = "4.4"
-
-[workspace]
-members = ["http"]
+ureq = "2.9.6"
