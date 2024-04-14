@@ -9,7 +9,7 @@ pub struct Init {
 }
 
 impl Init {
-    const NAME: &'static str = "init";
+    pub const NAME: &'static str = "init";
 
     pub fn new(config: Arc<AppConfig>) -> Self {
         Self { config }

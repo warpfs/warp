@@ -9,5 +9,6 @@ dirs = "5.0.1"
 erdp = "0.1.0"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_yaml = "0.9.34"
+thiserror = "1.0.58"
 ureq = "2.9.6"
 url = { version = "2.5.0", features = ["serde"] }

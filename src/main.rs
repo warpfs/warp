@@ -1,5 +1,6 @@
 use crate::cmd::{Command, Init};
 use crate::config::AppConfig;
+use crate::repo::{Repo, RepoLoadError};
 use dirs::home_dir;
 use erdp::ErrorDisplay;
 use std::fs::File;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 mod cmd;
 mod config;
+mod repo;
 
 fn main() -> ExitCode {
     // Get our home directory.
@@ -73,6 +75,28 @@ fn main() -> ExitCode {
 }
 
 fn warp() -> ExitCode {
+    // Get path to repository.
+    let path = match std::env::current_dir() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Failed to get current directory: {}.", e.display());
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // Load repository.
+    match Repo::load(&path) {
+        Ok(_) => {}
+        Err(RepoLoadError::NotWarpRepo) => {
+            eprintln!("{} is not a Warp repository, invoke Warp with '{} --help' to see how to setup a new repository.", path.display(), Init::NAME);
+            return ExitCode::FAILURE;
+        }
+        Err(e) => {
+            eprintln!("Failed to load {}: {}.", path.display(), e.display());
+            return ExitCode::FAILURE;
+        }
+    }
+
     // Get current shell.
     let shell = match std::env::var_os("SHELL") {
         Some(v) => v,
@@ -87,7 +111,12 @@ fn warp() -> ExitCode {
 
     // Launch the shell.
     if let Err(e) = cmd.status() {
-        eprintln!("Failed to launch {}: {}.", shell.to_string_lossy(), e);
+        eprintln!(
+            "Failed to launch {}: {}.",
+            shell.to_string_lossy(),
+            e.display()
+        );
+
         return ExitCode::FAILURE;
     }
 
