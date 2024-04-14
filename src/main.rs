@@ -1,11 +1,13 @@
+use crate::cmd::{Command, Init};
 use crate::config::AppConfig;
-use clap::{value_parser, Arg, ArgMatches, Command};
 use dirs::home_dir;
 use erdp::ErrorDisplay;
 use std::fs::File;
 use std::io::BufReader;
-use std::{path::PathBuf, process::ExitCode};
+use std::process::ExitCode;
+use std::sync::Arc;
 
+mod cmd;
 mod config;
 
 fn main() -> ExitCode {
@@ -45,44 +47,38 @@ fn main() -> ExitCode {
         }
     };
 
-    // Parse arguments.
-    let args = Command::new("warp")
-        .subcommand(
-            Command::new("init")
-                .about("Setup an existing directory to be resume on another computer")
-                .arg(Arg::new("name").help(
-                    "Unique name of this directory on the server (default to directory name)",
-                ).long("name").value_name("NAME"))
-                .arg(
-                    Arg::new("server")
-                        .help(format!("URL of the server to use (default to {})", config.default_server)).long("server").value_name("URL"),
-                ).arg(Arg::new("directory").help("The directory to setup (default to current directory)").value_name("DIRECTORY").value_parser(value_parser!(PathBuf))),
-        )
-        .get_matches();
+    // Setup commands.
+    let mut args = clap::Command::new("warp");
+    let config = Arc::new(config);
+    let commands: Vec<Box<dyn Command>> = vec![Box::new(Init::new(config.clone()))];
+
+    for cmd in &commands {
+        args = args.subcommand(cmd.definition());
+    }
 
     // Execute the command.
-    let res = match args.subcommand() {
-        Some(("init", args)) => init(args),
-        _ => wrap(),
+    let args = args.get_matches();
+    let (name, args) = match args.subcommand() {
+        Some(v) => v,
+        None => return warp(),
     };
 
-    match res {
-        Ok(_) => ExitCode::SUCCESS,
-        Err(e) => e,
+    for cmd in commands {
+        if cmd.is_matched(name) {
+            return cmd.exec(args);
+        }
     }
+
+    unreachable!()
 }
 
-fn init(_: &ArgMatches) -> Result<(), ExitCode> {
-    todo!()
-}
-
-fn wrap() -> Result<(), ExitCode> {
+fn warp() -> ExitCode {
     // Get current shell.
     let shell = match std::env::var_os("SHELL") {
         Some(v) => v,
         None => {
             eprintln!("No SHELL environment variable.");
-            return Err(ExitCode::FAILURE);
+            return ExitCode::FAILURE;
         }
     };
 
@@ -92,8 +88,8 @@ fn wrap() -> Result<(), ExitCode> {
     // Launch the shell.
     if let Err(e) = cmd.status() {
         eprintln!("Failed to launch {}: {}.", shell.to_string_lossy(), e);
-        return Err(ExitCode::FAILURE);
+        return ExitCode::FAILURE;
     }
 
-    Ok(())
+    ExitCode::SUCCESS
 }
