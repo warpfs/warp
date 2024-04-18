@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+/// Command to initialize a new respotiroy.
 pub struct Init {
     config: Arc<AppConfig>,
 }

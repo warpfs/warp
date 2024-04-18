@@ -1,7 +1,7 @@
 use crate::cmd::{Command, Init};
 use crate::config::AppConfig;
+use crate::home::Home;
 use crate::repo::{Repo, RepoLoadError};
-use dirs::home_dir;
 use erdp::ErrorDisplay;
 use std::fs::File;
 use std::io::BufReader;
@@ -10,30 +10,21 @@ use std::sync::Arc;
 
 mod cmd;
 mod config;
+mod home;
 mod repo;
 
 fn main() -> ExitCode {
     // Get our home directory.
-    let mut home = match home_dir() {
-        Some(v) => v,
-        None => {
-            eprintln!("Failed to locate home directory.");
+    let home = match Home::new() {
+        Ok(v) => Arc::new(v),
+        Err(e) => {
+            eprintln!("Failed to locate home directory: {}.", e.display());
             return ExitCode::FAILURE;
         }
     };
 
-    home.push(".warp");
-
-    // Create our home if not exists.
-    if let Err(e) = std::fs::create_dir(&home) {
-        if e.kind() != std::io::ErrorKind::AlreadyExists {
-            eprintln!("Failed to create {}: {}.", home.display(), e.display());
-            return ExitCode::FAILURE;
-        }
-    }
-
     // Load application configurations.
-    let path = home.join("config.yml");
+    let path = home.config();
     let config = match File::open(&path) {
         Ok(v) => match serde_yaml::from_reader::<_, AppConfig>(BufReader::new(v)) {
             Ok(v) => v,
