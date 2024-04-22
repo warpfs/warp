@@ -13,5 +13,5 @@ pub trait Keystore {
     where
         Self: Sized;
 
-    fn new(self: Arc<Self>) -> Result<Key, Box<dyn Error>>;
+    fn generate(self: Arc<Self>) -> Result<Key, Box<dyn Error>>;
 }

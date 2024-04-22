@@ -33,12 +33,12 @@ impl Keystore for DefaultStore {
         KeyList {}
     }
 
-    fn new(self: Arc<Self>) -> Result<Key, Box<dyn Error>> {
+    fn generate(self: Arc<Self>) -> Result<Key, Box<dyn Error>> {
         // Generate a new key.
         let mut key = Zeroizing::new([0u8; 16]);
 
         if let Err(e) = getrandom(key.deref_mut()) {
-            return Err(Box::new(NewError::GenerateKeyFailed(e)));
+            return Err(Box::new(GenerateError::GenerateKeyFailed(e)));
         }
 
         // Get a key check value.
@@ -70,7 +70,7 @@ impl Iterator for KeyList {
 
 /// Represents an error when [`DefaultStore::new()`] fails.
 #[derive(Debug, Error)]
-enum NewError {
+enum GenerateError {
     #[error("couldn't generate a new key")]
     GenerateKeyFailed(#[source] getrandom::Error),
 }
