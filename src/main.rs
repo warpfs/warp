@@ -1,6 +1,7 @@
-use crate::cmd::{Command, Init};
+use crate::cmd::Command;
 use crate::config::AppConfig;
 use crate::home::Home;
+use crate::key::KeyMgr;
 use crate::repo::{Repo, RepoLoadError};
 use erdp::ErrorDisplay;
 use std::fs::File;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 mod cmd;
 mod config;
 mod home;
+mod key;
 mod repo;
 
 fn main() -> ExitCode {
@@ -40,10 +42,23 @@ fn main() -> ExitCode {
         }
     };
 
+    // Load file encryption keys.
+    let config = Arc::new(config);
+    let keymgr = match KeyMgr::new(&home, &config) {
+        Ok(v) => Arc::new(v),
+        Err(e) => {
+            eprintln!("Failed to load file encryption keys: {}.", e.display());
+            return ExitCode::FAILURE;
+        }
+    };
+
     // Setup commands.
     let mut args = clap::Command::new("warp");
-    let config = Arc::new(config);
-    let commands: Vec<Box<dyn Command>> = vec![Box::new(Init::new(config.clone()))];
+    let commands: Vec<Box<dyn Command>> = vec![
+        Box::new(self::cmd::Init::new(config.clone(), keymgr.clone())),
+        Box::new(self::cmd::Key::new()),
+        Box::new(self::cmd::Keystore::new(keymgr.clone())),
+    ];
 
     for cmd in &commands {
         args = args.subcommand(cmd.definition());
@@ -79,7 +94,7 @@ fn warp() -> ExitCode {
     match Repo::load(&path) {
         Ok(_) => {}
         Err(RepoLoadError::NotWarpRepo) => {
-            eprintln!("{} is not a Warp repository, invoke Warp with '{} --help' to see how to setup a new repository.", path.display(), Init::NAME);
+            eprintln!("{} is not a Warp repository, invoke Warp with '{} --help' to see how to setup a new repository.", path.display(), self::cmd::Init::NAME);
             return ExitCode::FAILURE;
         }
         Err(e) => {

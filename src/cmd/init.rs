@@ -1,4 +1,6 @@
+use super::Key;
 use crate::config::AppConfig;
+use crate::key::KeyMgr;
 use clap::{value_parser, Arg, ArgMatches, Command};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -7,13 +9,14 @@ use std::sync::Arc;
 /// Command to initialize a new respotiroy.
 pub struct Init {
     config: Arc<AppConfig>,
+    keymgr: Arc<KeyMgr>,
 }
 
 impl Init {
     pub const NAME: &'static str = "init";
 
-    pub fn new(config: Arc<AppConfig>) -> Self {
-        Self { config }
+    pub fn new(config: Arc<AppConfig>, keymgr: Arc<KeyMgr>) -> Self {
+        Self { config, keymgr }
     }
 }
 
@@ -49,6 +52,12 @@ impl super::Command for Init {
     }
 
     fn exec(&self, _: &ArgMatches) -> ExitCode {
+        // Check if we have at least one key to encrypt.
+        if self.keymgr.keys().len() == 0 {
+            eprintln!("No file encryption keys available, invoke Warp with '{} --help' to see how to create a new key.", Key::NAME);
+            return ExitCode::FAILURE;
+        }
+
         todo!()
     }
 }

@@ -1,7 +1,11 @@
 pub use self::init::*;
+pub use self::key::*;
+pub use self::keystore::*;
 use std::process::ExitCode;
 
 mod init;
+mod key;
+mod keystore;
 
 /// A single command passed from a command line argument.
 pub trait Command {

@@ -6,8 +6,9 @@ computers easily.
 ## Features
 
 - Cross-platform.
-- Open-sourced, both client and server.
+- Open-source, the client are licensed under GPL and the server are licensed under AGPL.
 - Self-hosting supports.
+- Secure and private. All informations stored on the server are encrypted by your keys. These keys never leave your computer.
 
 ## License
 
