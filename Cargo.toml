@@ -17,3 +17,6 @@ thiserror = "1.0.58"
 ureq = "2.9.6"
 url = { version = "2.5.0", features = ["serde"] }
 zeroize = "1.7.0"
+
+[build-dependencies]
+cc = "1.0.95"

@@ -2,6 +2,7 @@ use self::store::{DefaultStore, Keystore};
 use crate::config::AppConfig;
 use crate::home::Home;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::iter::FusedIterator;
 use std::sync::Arc;
 use thiserror::Error;
@@ -45,6 +46,22 @@ impl KeyMgr {
 /// Unique identifier of a [`Key`].
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct KeyId([u8; 16]);
+
+impl AsRef<[u8; 16]> for KeyId {
+    fn as_ref(&self) -> &[u8; 16] {
+        &self.0
+    }
+}
+
+impl Display for KeyId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for b in self.0 {
+            write!(f, "{b:x}")?;
+        }
+
+        Ok(())
+    }
+}
 
 /// Key to encrypt/decrypt files in a repository.
 pub struct Key {
