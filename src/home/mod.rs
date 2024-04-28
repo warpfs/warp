@@ -28,6 +28,10 @@ impl Home {
     pub fn config(&self) -> PathBuf {
         self.0.join("config.yml")
     }
+
+    pub fn keys(&self) -> PathBuf {
+        self.0.join("keys")
+    }
 }
 
 /// Represents an error when [`Home::new()`] fails.

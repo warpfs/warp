@@ -14,22 +14,25 @@ use thiserror::Error;
 use zeroize::Zeroizing;
 
 /// Implementation of [`Keystore`] using native key store of the OS.
-pub struct DefaultStore {}
+pub struct DefaultStore {
+    #[allow(dead_code)]
+    home: Arc<Home>,
+}
 
 impl DefaultStore {
     const KEY_TYPE1: &'static CStr = c"HKDF:SHA3:256:AES:CTR:128:HMAC:SHA3:256";
 
-    pub fn new(_: &Home) -> Self {
-        Self {}
+    pub fn new(home: &Arc<Home>) -> Self {
+        Self { home: home.clone() }
     }
 
     #[cfg(target_os = "linux")]
-    fn store(&self, _: &KeyId, _: &[u8; 16]) -> Result<(), GenerateError> {
+    fn store(&self, _: &KeyId, _: Zeroizing<[u8; 16]>) -> Result<(), GenerateError> {
         todo!()
     }
 
     #[cfg(target_os = "macos")]
-    fn store(&self, id: &KeyId, key: &[u8; 16]) -> Result<(), GenerateError> {
+    fn store(&self, id: &KeyId, key: Zeroizing<[u8; 16]>) -> Result<(), GenerateError> {
         let id = id.as_ref().as_ptr();
         let key = key.as_ptr();
         let tag = Self::KEY_TYPE1.as_ptr();
@@ -43,8 +46,54 @@ impl DefaultStore {
     }
 
     #[cfg(target_os = "windows")]
-    fn store(&self, _: &KeyId, _: &[u8; 16]) -> Result<(), GenerateError> {
-        todo!()
+    fn store(&self, id: &KeyId, mut key: Zeroizing<[u8; 16]>) -> Result<(), GenerateError> {
+        use std::fs::File;
+        use std::io::{Error, Write};
+        use std::mem::zeroed;
+        use std::ptr::null;
+        use windows_sys::Win32::Foundation::{LocalFree, FALSE};
+        use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
+
+        // Setup data to encrypt.
+        let data = CRYPT_INTEGER_BLOB {
+            cbData: 16,
+            pbData: key.as_mut_ptr(),
+        };
+
+        // Encrypt the key.
+        let mut key = unsafe { zeroed() };
+
+        if unsafe { CryptProtectData(&data, null(), null(), null(), null(), 0, &mut key) == FALSE }
+        {
+            return Err(Error::last_os_error());
+        }
+
+        // Copy the encrypted key then free the buffer.
+        let mut data = Self::KEY_TYPE1.to_bytes_with_nul().to_owned();
+        let len = key.cbData.try_into().unwrap();
+
+        data.extend_from_slice(unsafe { std::slice::from_raw_parts(key.pbData, len) });
+
+        assert!(unsafe { LocalFree(key.pbData.cast()).is_null() });
+
+        // Get file path to store the key.
+        let mut path = self.home.keys();
+
+        path.push(id.to_string());
+
+        // Ensure the directory to store the key are exists.
+        if let Err(e) = std::fs::create_dir_all(&path) {
+            return Err(GenerateError::CreateDirectoryFailed(path, e));
+        }
+
+        // Write the encrypted key.
+        let mut file = match File::create_new(&path) {
+            Ok(v) => v,
+            Err(e) => return Err(GenerateError::CreateFileFailed(path, e)),
+        };
+
+        file.write_all(&data).unwrap(); // Let's panic when fails instead of leaving an empty file.
+        Ok(())
     }
 }
 
@@ -83,7 +132,7 @@ impl Keystore for DefaultStore {
         // Store the key.
         let id = KeyId(id);
 
-        self.store(&id, &key)?;
+        self.store(&id, key)?;
 
         todo!()
     }
@@ -109,6 +158,18 @@ enum GenerateError {
     #[cfg(target_os = "macos")]
     #[error("couldn't store the generated key to a keychain (code: {0})")]
     StoreKeyFailed(std::ffi::c_int),
+
+    #[cfg(target_os = "windows")]
+    #[error("couldn't encrypt the generated key")]
+    EncryptKeyFailed(#[source] std::io::Error),
+
+    #[cfg(target_os = "windows")]
+    #[error("couldn't create {0}")]
+    CreateDirectoryFailed(std::path::PathBuf, #[source] std::io::Error),
+
+    #[cfg(target_os = "windows")]
+    #[error("couldn't create {0}")]
+    CreateFileFailed(std::path::PathBuf, #[source] std::io::Error),
 }
 
 #[cfg(target_os = "macos")]

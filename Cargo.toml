@@ -18,5 +18,14 @@ ureq = "2.9.6"
 url = { version = "2.5.0", features = ["serde"] }
 zeroize = "1.7.0"
 
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.52.0"
+features = [
+    "Win32",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+]
+
 [build-dependencies]
 cc = "1.0.95"
