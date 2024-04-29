@@ -7,6 +7,7 @@ int default_store_store_key(const UInt8 *id, const UInt8 *key, const char *tag) 
     CFMutableDictionaryRef attrs;
     CFDataRef bin;
     CFStringRef str;
+    SecAccessControlRef access;
     OSStatus status;
 
     // Setup attributes,
@@ -33,8 +34,11 @@ int default_store_store_key(const UInt8 *id, const UInt8 *key, const char *tag) 
     CFDictionarySetValue(attrs, kSecAttrIsPermanent, kCFBooleanTrue);
     CFDictionarySetValue(attrs, kSecAttrSynchronizable, kCFBooleanTrue);
     CFDictionarySetValue(attrs, kSecUseDataProtectionKeychain, kCFBooleanTrue);
-    CFDictionarySetValue(attrs, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock);
     CFDictionarySetValue(attrs, kSecAttrKeyClass, kSecAttrKeyClassSymmetric);
+
+    access = SecAccessControlCreateWithFlags(NULL, kSecAttrAccessibleWhenUnlocked, kSecAccessControlUserPresence, NULL);
+    CFDictionarySetValue(attrs, kSecAttrAccessControl, access);
+    CFRelease(access);
 
     // Store key.
     status = SecItemAdd(attrs, nil);

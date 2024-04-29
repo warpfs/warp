@@ -29,6 +29,7 @@ impl Home {
         self.0.join("config.yml")
     }
 
+    #[cfg(target_os = "windows")]
     pub fn keys(&self) -> PathBuf {
         self.0.join("keys")
     }
