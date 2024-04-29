@@ -34,7 +34,7 @@ impl KeyMgr {
         Ok(Self { stores, keys })
     }
 
-    pub fn stores(&self) -> impl Iterator<Item = &dyn Keystore> + FusedIterator {
+    pub fn stores(&self) -> impl FusedIterator<Item = &dyn Keystore> {
         self.stores.values().map(|s| s.as_ref())
     }
 
