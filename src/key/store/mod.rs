@@ -6,7 +6,7 @@ use std::sync::Arc;
 mod default;
 
 /// Storage to keep encryption keys.
-pub trait Keystore {
+pub trait Keystore: Send + Sync {
     fn id(&self) -> &'static str;
 
     fn list(self: &Arc<Self>) -> impl Iterator<Item = Key>
