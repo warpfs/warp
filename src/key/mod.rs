@@ -38,7 +38,7 @@ impl KeyMgr {
         self.stores.values().map(|s| s.as_ref())
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = &Key> + ExactSizeIterator + FusedIterator {
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = &Key> + FusedIterator {
         self.keys.values()
     }
 }
