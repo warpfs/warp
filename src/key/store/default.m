@@ -8,6 +8,7 @@ int default_store_store_key(const UInt8 *id, const UInt8 *key, const char *tag) 
     CFDataRef bin;
     CFStringRef str;
     SecAccessControlRef access;
+    CFDateRef date;
     OSStatus status;
 
     // Setup attributes,
@@ -39,6 +40,10 @@ int default_store_store_key(const UInt8 *id, const UInt8 *key, const char *tag) 
     access = SecAccessControlCreateWithFlags(NULL, kSecAttrAccessibleWhenUnlocked, kSecAccessControlUserPresence, NULL);
     CFDictionarySetValue(attrs, kSecAttrAccessControl, access);
     CFRelease(access);
+
+    date = CFDateCreate(NULL, CFAbsoluteTimeGetCurrent());
+    CFDictionarySetValue(attrs, kSecAttrCreationDate, date);
+    CFRelease(date);
 
     // Store key.
     status = SecItemAdd(attrs, nil);
