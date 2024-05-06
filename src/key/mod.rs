@@ -2,6 +2,7 @@ use self::store::{DefaultStore, Keystore};
 use crate::config::AppConfig;
 use crate::home::Home;
 use std::collections::HashMap;
+use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::iter::FusedIterator;
 use std::sync::Arc;
@@ -25,6 +26,8 @@ impl KeyMgr {
             let s = Arc::new(DefaultStore::new(home));
 
             for k in s.list() {
+                let k = k.map_err(|e| KeyMgrError::ListKeyFailed(s.id(), e))?;
+
                 assert!(keys.insert(k.id().clone(), k).is_none());
             }
 
@@ -76,4 +79,7 @@ impl Key {
 
 /// Represents an error when [`KeyMgr`] fails to initialize.
 #[derive(Debug, Error)]
-pub enum KeyMgrError {}
+pub enum KeyMgrError {
+    #[error("couldn't list keys from '{0}' store")]
+    ListKeyFailed(&'static str, #[source] Box<dyn Error>),
+}

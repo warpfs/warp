@@ -102,7 +102,24 @@ impl Keystore for DefaultStore {
         "default"
     }
 
-    fn list(self: &Arc<Self>) -> impl Iterator<Item = Key>
+    #[cfg(target_os = "linux")]
+    fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
+    where
+        Self: Sized,
+    {
+        KeyList {}
+    }
+
+    #[cfg(target_os = "macos")]
+    fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
+    where
+        Self: Sized,
+    {
+        KeyList {}
+    }
+
+    #[cfg(target_os = "windows")]
+    fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
     where
         Self: Sized,
     {
@@ -134,7 +151,7 @@ impl Keystore for DefaultStore {
 
         self.store(&id, key)?;
 
-        todo!()
+        Ok(Key { id })
     }
 }
 
@@ -142,7 +159,7 @@ impl Keystore for DefaultStore {
 struct KeyList {}
 
 impl Iterator for KeyList {
-    type Item = Key;
+    type Item = Result<Key, Box<dyn Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         todo!()

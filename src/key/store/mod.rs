@@ -9,7 +9,7 @@ mod default;
 pub trait Keystore: Send + Sync {
     fn id(&self) -> &'static str;
 
-    fn list(self: &Arc<Self>) -> impl Iterator<Item = Key>
+    fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
     where
         Self: Sized;
 
