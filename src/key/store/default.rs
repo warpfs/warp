@@ -65,7 +65,7 @@ impl DefaultStore {
 
         if unsafe { CryptProtectData(&data, null(), null(), null(), null(), 0, &mut key) == FALSE }
         {
-            return Err(Error::last_os_error());
+            return Err(GenerateError::EncryptKeyFailed(Error::last_os_error()));
         }
 
         // Copy the encrypted key then free the buffer.
