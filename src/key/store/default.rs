@@ -8,7 +8,7 @@ use sha3::digest::{ExtendableOutput, Update, XofReader};
 use sha3::Shake128;
 use std::error::Error;
 use std::ffi::CStr;
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
 use zeroize::Zeroizing;
@@ -33,10 +33,70 @@ impl DefaultStore {
 
     #[cfg(target_os = "macos")]
     fn store(&self, id: &KeyId, key: Zeroizing<[u8; 16]>) -> Result<(), GenerateError> {
-        let id = id.as_ref().as_ptr();
-        let key = key.as_ptr();
-        let tag = Self::KEY_TYPE1.as_ptr();
-        let status = unsafe { default_store_store_key(id, key, tag) };
+        use self::macos::{
+            kSecAttrApplicationTag, kSecAttrIsExtractable, kSecAttrSynchronizable,
+            kSecUseDataProtectionKeychain, SecAccessControl,
+        };
+        use core_foundation::base::{TCFType, ToVoid};
+        use core_foundation::data::CFData;
+        use core_foundation::dictionary::CFMutableDictionary;
+        use core_foundation::number::kCFBooleanTrue;
+        use core_foundation::string::CFString;
+        use security_framework_sys::access_control::{
+            kSecAccessControlUserPresence, kSecAttrAccessibleWhenUnlocked,
+            SecAccessControlCreateWithFlags,
+        };
+        use security_framework_sys::item::{
+            kSecAttrAccessControl, kSecAttrApplicationLabel, kSecAttrDescription,
+            kSecAttrIsPermanent, kSecAttrKeyClass, kSecAttrKeyClassSymmetric, kSecAttrLabel,
+            kSecClass, kSecClassKey, kSecValueData,
+        };
+        use security_framework_sys::keychain_item::SecItemAdd;
+        use std::ptr::null_mut;
+
+        // Setup attributes.
+        let mut attrs = CFMutableDictionary::new();
+        let id = CFData::from_buffer(id.as_ref());
+        let key = CFData::from_buffer(key.as_slice());
+        let label = CFString::from_static_string("Warp File Key");
+        let desc = CFString::from_static_string("Key to encrypt Warp files");
+        let tag = CFData::from_buffer(Self::KEY_TYPE1.to_bytes());
+        let access = unsafe {
+            SecAccessControl::wrap_under_create_rule(SecAccessControlCreateWithFlags(
+                null_mut(),
+                kSecAttrAccessibleWhenUnlocked.to_void(),
+                kSecAccessControlUserPresence,
+                null_mut(),
+            ))
+        };
+
+        unsafe { attrs.set(kSecClass.to_void(), kSecClassKey.to_void()) };
+        unsafe { attrs.set(kSecValueData.to_void(), key.to_void()) };
+        unsafe { attrs.set(kSecAttrLabel.to_void(), label.to_void()) };
+        unsafe { attrs.set(kSecAttrDescription.to_void(), desc.to_void()) };
+        unsafe { attrs.set(kSecAttrApplicationLabel.to_void(), id.to_void()) };
+        unsafe { attrs.set(kSecAttrApplicationTag.to_void(), tag.to_void()) };
+        unsafe { attrs.set(kSecAttrIsPermanent.to_void(), kCFBooleanTrue.to_void()) };
+        unsafe { attrs.set(kSecAttrIsExtractable.to_void(), kCFBooleanTrue.to_void()) };
+        unsafe { attrs.set(kSecAttrSynchronizable.to_void(), kCFBooleanTrue.to_void()) };
+        unsafe { attrs.set(kSecAttrAccessControl.to_void(), access.to_void()) };
+
+        unsafe {
+            attrs.set(
+                kSecUseDataProtectionKeychain.to_void(),
+                kCFBooleanTrue.to_void(),
+            )
+        };
+
+        unsafe {
+            attrs.set(
+                kSecAttrKeyClass.to_void(),
+                kSecAttrKeyClassSymmetric.to_void(),
+            )
+        };
+
+        // Add to keychain.
+        let status = unsafe { SecItemAdd(attrs.as_concrete_TypeRef(), null_mut()) };
 
         if status == 0 {
             Ok(())
@@ -95,6 +155,22 @@ impl DefaultStore {
         file.write_all(&data).unwrap(); // Let's panic when fails instead of leaving an empty file.
         Ok(())
     }
+
+    fn get_id(key: &[u8; 16]) -> KeyId {
+        // Get a key check value.
+        let mut kcv = [0u8; 16];
+
+        Aes128::new(key.into()).encrypt_block((&mut kcv).into());
+
+        // Get key ID.
+        let mut hasher = Shake128::default();
+        let mut id = [0u8; 16];
+
+        hasher.update(&kcv);
+        hasher.finalize_xof().read(&mut id);
+
+        KeyId(id)
+    }
 }
 
 impl Keystore for DefaultStore {
@@ -102,28 +178,11 @@ impl Keystore for DefaultStore {
         "default"
     }
 
-    #[cfg(target_os = "linux")]
     fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
     where
         Self: Sized,
     {
-        KeyList {}
-    }
-
-    #[cfg(target_os = "macos")]
-    fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
-    where
-        Self: Sized,
-    {
-        KeyList {}
-    }
-
-    #[cfg(target_os = "windows")]
-    fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
-    where
-        Self: Sized,
-    {
-        KeyList {}
+        KeyList::default()
     }
 
     fn generate(self: Arc<Self>) -> Result<Key, Box<dyn Error>> {
@@ -134,20 +193,8 @@ impl Keystore for DefaultStore {
             return Err(Box::new(GenerateError::GenerateKeyFailed(e)));
         }
 
-        // Get a key check value.
-        let mut kcv = [0u8; 16];
-
-        Aes128::new(key.deref().into()).encrypt_block((&mut kcv).into());
-
-        // Get key ID.
-        let mut hasher = Shake128::default();
-        let mut id = [0u8; 16];
-
-        hasher.update(&kcv);
-        hasher.finalize_xof().read(&mut id);
-
         // Store the key.
-        let id = KeyId(id);
+        let id = Self::get_id(&key);
 
         self.store(&id, key)?;
 
@@ -156,14 +203,130 @@ impl Keystore for DefaultStore {
 }
 
 /// Iterator to list all keys in the [`DefaultStore`].
-struct KeyList {}
+#[derive(Default)]
+struct KeyList {
+    #[cfg(target_os = "macos")]
+    items: Option<core_foundation::array::CFArray>,
+    #[cfg(target_os = "macos")]
+    next: core_foundation::base::CFIndex,
+}
 
 impl Iterator for KeyList {
     type Item = Result<Key, Box<dyn Error>>;
 
+    #[cfg(target_os = "linux")]
     fn next(&mut self) -> Option<Self::Item> {
         todo!()
     }
+
+    #[cfg(target_os = "macos")]
+    fn next(&mut self) -> Option<Self::Item> {
+        use self::macos::{
+            kSecAttrApplicationTag, kSecAttrSynchronizable, kSecAttrSynchronizableAny,
+            kSecUseDataProtectionKeychain,
+        };
+        use core_foundation::base::{CFType, TCFType, ToVoid};
+        use core_foundation::data::CFData;
+        use core_foundation::dictionary::{CFDictionary, CFMutableDictionary};
+        use core_foundation::number::kCFBooleanTrue;
+        use security_framework_sys::item::{
+            kSecAttrKeyClass, kSecAttrKeyClassSymmetric, kSecClass, kSecClassKey, kSecMatchLimit,
+            kSecMatchLimitAll, kSecReturnAttributes, kSecReturnData,
+        };
+        use security_framework_sys::keychain_item::SecItemCopyMatching;
+        use std::ptr::null;
+
+        // Get keychain items.
+        let items = match &self.items {
+            Some(v) => v,
+            None => {
+                // Setup query.
+                let mut query = CFMutableDictionary::new();
+
+                unsafe { query.set(kSecMatchLimit.to_void(), kSecMatchLimitAll.to_void()) };
+                unsafe { query.set(kSecClass.to_void(), kSecClassKey.to_void()) };
+                unsafe { query.set(kSecReturnAttributes.to_void(), kCFBooleanTrue.to_void()) };
+                unsafe { query.set(kSecReturnData.to_void(), kCFBooleanTrue.to_void()) };
+
+                unsafe {
+                    query.set(
+                        kSecAttrKeyClass.to_void(),
+                        kSecAttrKeyClassSymmetric.to_void(),
+                    )
+                };
+
+                unsafe {
+                    query.set(
+                        kSecAttrSynchronizable.to_void(),
+                        kSecAttrSynchronizableAny.to_void(),
+                    )
+                };
+
+                unsafe {
+                    query.set(
+                        kSecUseDataProtectionKeychain.to_void(),
+                        kCFBooleanTrue.to_void(),
+                    )
+                };
+
+                // Execute the query.
+                let mut items = null();
+
+                match unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut items) } {
+                    0 => {}
+                    v => return Some(Err(Box::new(ListError::ListKeysFailed(v)))),
+                }
+
+                // Set items.
+                let items = unsafe { CFType::wrap_under_create_rule(items) };
+
+                self.items.insert(items.downcast_into().unwrap())
+            }
+        };
+
+        // Get next key.
+        while let Some(item) = items.get(self.next) {
+            let item = unsafe { CFType::wrap_under_get_rule(*item) };
+            let attrs: CFDictionary = item.downcast_into().unwrap();
+
+            self.next += 1;
+
+            // Get key type.
+            let ty: CFData = match unsafe { attrs.find(kSecAttrApplicationTag.to_void()) } {
+                Some(v) => unsafe { CFType::wrap_under_get_rule(*v).downcast_into().unwrap() },
+                None => continue,
+            };
+
+            if ty.bytes() != DefaultStore::KEY_TYPE1.to_bytes() {
+                continue;
+            }
+
+            // Get key.
+            let key = unsafe { attrs.get(kSecReturnData.to_void()) };
+            let key: CFData = unsafe { CFType::wrap_under_get_rule(*key).downcast_into().unwrap() };
+
+            if let Ok(key) = key.bytes().try_into().map(|v| Zeroizing::new(v)) {
+                let id = DefaultStore::get_id(&key);
+
+                return Some(Ok(Key { id }));
+            }
+        }
+
+        None
+    }
+
+    #[cfg(target_os = "windows")]
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
+
+/// Represents an error when [`DefaultStore::list()`] fails.
+#[derive(Debug, Error)]
+enum ListError {
+    #[cfg(target_os = "macos")]
+    #[error("couldn't list keys (code: {0})")]
+    ListKeysFailed(core_foundation::base::OSStatus),
 }
 
 /// Represents an error when [`DefaultStore::new()`] fails.
@@ -174,7 +337,7 @@ enum GenerateError {
 
     #[cfg(target_os = "macos")]
     #[error("couldn't store the generated key to a keychain (code: {0})")]
-    StoreKeyFailed(std::ffi::c_int),
+    StoreKeyFailed(core_foundation::base::OSStatus),
 
     #[cfg(target_os = "windows")]
     #[error("couldn't encrypt the generated key")]
@@ -190,10 +353,26 @@ enum GenerateError {
 }
 
 #[cfg(target_os = "macos")]
-extern "C" {
-    fn default_store_store_key(
-        id: *const u8,
-        key: *const u8,
-        tag: *const std::ffi::c_char,
-    ) -> std::ffi::c_int;
+mod macos {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFStringRef;
+    use core_foundation::{declare_TCFType, impl_TCFType};
+    use security_framework_sys::access_control::SecAccessControlGetTypeID;
+    use security_framework_sys::base::SecAccessControlRef;
+
+    declare_TCFType! { SecAccessControl, SecAccessControlRef }
+
+    impl_TCFType!(
+        SecAccessControl,
+        SecAccessControlRef,
+        SecAccessControlGetTypeID
+    );
+
+    extern "C" {
+        pub static kSecAttrApplicationTag: CFStringRef;
+        pub static kSecAttrIsExtractable: CFStringRef;
+        pub static kSecAttrSynchronizable: CFStringRef;
+        pub static kSecAttrSynchronizableAny: CFStringRef;
+        pub static kSecUseDataProtectionKeychain: CFStringRef;
+    }
 }
