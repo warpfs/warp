@@ -305,7 +305,7 @@ impl Iterator for KeyList {
             let key = unsafe { attrs.get(kSecReturnData.to_void()) };
             let key: CFData = unsafe { CFType::wrap_under_get_rule(*key).downcast_into().unwrap() };
 
-            if let Ok(key) = key.bytes().try_into().map(|v| Zeroizing::new(v)) {
+            if let Ok(key) = key.bytes().try_into().map(Zeroizing::new) {
                 let id = DefaultStore::get_id(&key);
 
                 return Some(Ok(Key { id }));
