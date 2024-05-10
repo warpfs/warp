@@ -1,3 +1,5 @@
+#![allow(clippy::enum_variant_names)]
+
 use crate::cmd::Command;
 use crate::config::AppConfig;
 use crate::home::Home;
