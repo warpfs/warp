@@ -229,6 +229,7 @@ impl Iterator for KeyList {
         use core_foundation::data::CFData;
         use core_foundation::dictionary::{CFDictionary, CFMutableDictionary};
         use core_foundation::number::kCFBooleanTrue;
+        use security_framework_sys::base::errSecItemNotFound;
         use security_framework_sys::item::{
             kSecAttrKeyClass, kSecAttrKeyClassSymmetric, kSecClass, kSecClassKey, kSecMatchLimit,
             kSecMatchLimitAll, kSecReturnAttributes, kSecReturnData,
@@ -272,8 +273,10 @@ impl Iterator for KeyList {
                 // Execute the query.
                 let mut items = null();
 
+                #[allow(non_upper_case_globals)]
                 match unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut items) } {
                     0 => {}
+                    errSecItemNotFound => return None,
                     v => return Some(Err(Box::new(ListError::ListKeysFailed(v)))),
                 }
 
@@ -325,7 +328,7 @@ impl Iterator for KeyList {
 #[derive(Debug, Error)]
 enum ListError {
     #[cfg(target_os = "macos")]
-    #[error("couldn't list keys (code: {0})")]
+    #[error("couldn't list keychain items (code: {0})")]
     ListKeysFailed(core_foundation::base::OSStatus),
 }
 
