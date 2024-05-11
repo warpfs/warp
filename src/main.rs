@@ -58,7 +58,7 @@ fn main() -> ExitCode {
     let mut args = clap::Command::new("warp");
     let commands: Vec<Box<dyn Command>> = vec![
         Box::new(self::cmd::Init::new(config.clone(), keymgr.clone())),
-        Box::new(self::cmd::Key::new()),
+        Box::new(self::cmd::Key::new(keymgr.clone())),
         Box::new(self::cmd::Keystore::new(keymgr.clone())),
     ];
 
