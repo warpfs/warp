@@ -10,6 +10,7 @@ use std::error::Error;
 use std::ffi::CStr;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use std::time::SystemTime;
 use thiserror::Error;
 use zeroize::Zeroizing;
 
@@ -27,19 +28,20 @@ impl DefaultStore {
     }
 
     #[cfg(target_os = "linux")]
-    fn store(&self, _: &KeyId, _: Zeroizing<[u8; 16]>) -> Result<(), GenerateError> {
+    fn store(&self, _: &KeyId, _: Zeroizing<[u8; 16]>) -> Result<SystemTime, GenerateError> {
         todo!()
     }
 
     #[cfg(target_os = "macos")]
-    fn store(&self, id: &KeyId, key: Zeroizing<[u8; 16]>) -> Result<(), GenerateError> {
+    fn store(&self, id: &KeyId, key: Zeroizing<[u8; 16]>) -> Result<SystemTime, GenerateError> {
         use self::macos::{
-            kSecAttrApplicationTag, kSecAttrIsExtractable, kSecAttrSynchronizable,
-            kSecUseDataProtectionKeychain, SecAccessControl,
+            kSecAttrApplicationTag, kSecAttrCreationDate, kSecAttrIsExtractable,
+            kSecAttrSynchronizable, kSecUseDataProtectionKeychain, SecAccessControl,
         };
-        use core_foundation::base::{TCFType, ToVoid};
+        use core_foundation::base::{CFType, TCFType, ToVoid};
         use core_foundation::data::CFData;
-        use core_foundation::dictionary::CFMutableDictionary;
+        use core_foundation::date::{kCFAbsoluteTimeIntervalSince1970, CFDate};
+        use core_foundation::dictionary::{CFDictionary, CFMutableDictionary};
         use core_foundation::number::kCFBooleanTrue;
         use core_foundation::string::CFString;
         use security_framework_sys::access_control::{
@@ -49,10 +51,11 @@ impl DefaultStore {
         use security_framework_sys::item::{
             kSecAttrAccessControl, kSecAttrApplicationLabel, kSecAttrDescription,
             kSecAttrIsPermanent, kSecAttrKeyClass, kSecAttrKeyClassSymmetric, kSecAttrLabel,
-            kSecClass, kSecClassKey, kSecValueData,
+            kSecClass, kSecClassKey, kSecReturnAttributes, kSecValueData,
         };
         use security_framework_sys::keychain_item::SecItemAdd;
-        use std::ptr::null_mut;
+        use std::ptr::{null, null_mut};
+        use std::time::{Duration, UNIX_EPOCH};
 
         // Setup attributes.
         let mut attrs = CFMutableDictionary::new();
@@ -80,6 +83,7 @@ impl DefaultStore {
         unsafe { attrs.set(kSecAttrIsExtractable.to_void(), kCFBooleanTrue.to_void()) };
         unsafe { attrs.set(kSecAttrSynchronizable.to_void(), kCFBooleanTrue.to_void()) };
         unsafe { attrs.set(kSecAttrAccessControl.to_void(), access.to_void()) };
+        unsafe { attrs.set(kSecReturnAttributes.to_void(), kCFBooleanTrue.to_void()) };
 
         unsafe {
             attrs.set(
@@ -96,18 +100,27 @@ impl DefaultStore {
         };
 
         // Add to keychain.
-        let status = unsafe { SecItemAdd(attrs.as_concrete_TypeRef(), null_mut()) };
+        let mut out = null();
+        let status = unsafe { SecItemAdd(attrs.as_concrete_TypeRef(), &mut out) };
 
-        if status == 0 {
-            Ok(())
-        } else {
-            Err(GenerateError::StoreKeyFailed(status))
+        if status != 0 {
+            return Err(GenerateError::StoreKeyFailed(status));
         }
+
+        // Get creation date.
+        let attrs = unsafe { CFType::wrap_under_create_rule(out) };
+        let attrs: CFDictionary = attrs.downcast_into().unwrap();
+        let created = unsafe { attrs.get(kSecAttrCreationDate.to_void()) };
+        let created = unsafe { CFType::wrap_under_get_rule(*created) };
+        let created: CFDate = created.downcast_into().unwrap();
+        let epoch = unsafe { kCFAbsoluteTimeIntervalSince1970 + created.abs_time() };
+
+        Ok(UNIX_EPOCH + Duration::from_secs_f64(epoch))
     }
 
     #[cfg(target_os = "windows")]
-    fn store(&self, id: &KeyId, mut key: Zeroizing<[u8; 16]>) -> Result<(), GenerateError> {
-        use std::fs::File;
+    fn store(&self, id: &KeyId, mut key: Zeroizing<[u8; 16]>) -> Result<SystemTime, GenerateError> {
+        use std::fs::{create_dir_all, remove_file, File};
         use std::io::{Error, Write};
         use std::mem::zeroed;
         use std::ptr::null;
@@ -142,7 +155,7 @@ impl DefaultStore {
         path.push(id.to_string());
 
         // Ensure the directory to store the key are exists.
-        if let Err(e) = std::fs::create_dir_all(&path) {
+        if let Err(e) = create_dir_all(&path) {
             return Err(GenerateError::CreateDirectoryFailed(path, e));
         }
 
@@ -152,8 +165,21 @@ impl DefaultStore {
             Err(e) => return Err(GenerateError::CreateFileFailed(path, e)),
         };
 
-        file.write_all(&data).unwrap(); // Let's panic when fails instead of leaving an empty file.
-        Ok(())
+        if let Err(e) = file.write_all(&data) {
+            remove_file(&path).unwrap();
+            return Err(GenerateError::WriteFileFailed(path, e));
+        }
+
+        // Get created time.
+        let meta = match file.metadata() {
+            Ok(v) => v,
+            Err(e) => {
+                remove_file(&path).unwrap();
+                return Err(GenerateError::GetFileMetadataFailed(path, e));
+            }
+        };
+
+        Ok(meta.created().unwrap())
     }
 
     fn get_id(key: &[u8; 16]) -> KeyId {
@@ -195,10 +221,9 @@ impl Keystore for DefaultStore {
 
         // Store the key.
         let id = Self::get_id(&key);
+        let created = self.store(&id, key)?;
 
-        self.store(&id, key)?;
-
-        Ok(Key { id })
+        Ok(Key { id, created })
     }
 }
 
@@ -222,20 +247,22 @@ impl Iterator for KeyList {
     #[cfg(target_os = "macos")]
     fn next(&mut self) -> Option<Self::Item> {
         use self::macos::{
-            kSecAttrApplicationTag, kSecAttrSynchronizable, kSecAttrSynchronizableAny,
-            kSecUseDataProtectionKeychain,
+            kSecAttrApplicationTag, kSecAttrCreationDate, kSecAttrSynchronizable,
+            kSecAttrSynchronizableAny, kSecUseDataProtectionKeychain,
         };
         use core_foundation::base::{CFType, TCFType, ToVoid};
         use core_foundation::data::CFData;
+        use core_foundation::date::{kCFAbsoluteTimeIntervalSince1970, CFDate};
         use core_foundation::dictionary::{CFDictionary, CFMutableDictionary};
         use core_foundation::number::kCFBooleanTrue;
         use security_framework_sys::base::errSecItemNotFound;
         use security_framework_sys::item::{
             kSecAttrKeyClass, kSecAttrKeyClassSymmetric, kSecClass, kSecClassKey, kSecMatchLimit,
-            kSecMatchLimitAll, kSecReturnAttributes, kSecReturnData,
+            kSecMatchLimitAll, kSecReturnAttributes, kSecReturnData, kSecValueData,
         };
         use security_framework_sys::keychain_item::SecItemCopyMatching;
         use std::ptr::null;
+        use std::time::{Duration, UNIX_EPOCH};
 
         // Get keychain items.
         let items = match &self.items {
@@ -305,13 +332,18 @@ impl Iterator for KeyList {
             }
 
             // Get key.
-            let key = unsafe { attrs.get(kSecReturnData.to_void()) };
+            let key = unsafe { attrs.get(kSecValueData.to_void()) };
             let key: CFData = unsafe { CFType::wrap_under_get_rule(*key).downcast_into().unwrap() };
 
             if let Ok(key) = key.bytes().try_into().map(Zeroizing::new) {
                 let id = DefaultStore::get_id(&key);
+                let created = unsafe { attrs.get(kSecAttrCreationDate.to_void()) };
+                let created = unsafe { CFType::wrap_under_get_rule(*created) };
+                let created: CFDate = created.downcast_into().unwrap();
+                let created = unsafe { kCFAbsoluteTimeIntervalSince1970 + created.abs_time() };
+                let created = UNIX_EPOCH + Duration::from_secs_f64(created);
 
-                return Some(Ok(Key { id }));
+                return Some(Ok(Key { id, created }));
             }
         }
 
@@ -353,6 +385,14 @@ enum GenerateError {
     #[cfg(target_os = "windows")]
     #[error("couldn't create {0}")]
     CreateFileFailed(std::path::PathBuf, #[source] std::io::Error),
+
+    #[cfg(target_os = "windows")]
+    #[error("couldn't write {0}")]
+    WriteFileFailed(std::path::PathBuf, #[source] std::io::Error),
+
+    #[cfg(target_os = "windows")]
+    #[error("couldn't get metadata of {0}")]
+    GetFileMetadataFailed(std::path::PathBuf, #[source] std::io::Error),
 }
 
 #[cfg(target_os = "macos")]
@@ -373,6 +413,7 @@ mod macos {
 
     extern "C" {
         pub static kSecAttrApplicationTag: CFStringRef;
+        pub static kSecAttrCreationDate: CFStringRef;
         pub static kSecAttrIsExtractable: CFStringRef;
         pub static kSecAttrSynchronizable: CFStringRef;
         pub static kSecAttrSynchronizableAny: CFStringRef;

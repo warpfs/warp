@@ -6,6 +6,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::iter::FusedIterator;
 use std::sync::Arc;
+use std::time::SystemTime;
 use thiserror::Error;
 
 mod store;
@@ -69,11 +70,16 @@ impl Display for KeyId {
 /// Key to encrypt/decrypt files in a repository.
 pub struct Key {
     id: KeyId,
+    created: SystemTime,
 }
 
 impl Key {
     pub fn id(&self) -> &KeyId {
         &self.id
+    }
+
+    pub fn created(&self) -> SystemTime {
+        self.created
     }
 }
 
