@@ -2,6 +2,8 @@ use crate::key::KeyMgr;
 use clap::{ArgMatches, Command};
 use std::process::ExitCode;
 use std::sync::Arc;
+use time::format_description::well_known::Rfc2822;
+use time::{OffsetDateTime, UtcOffset};
 
 /// Command to manage file encryption keys.
 pub struct Key {
@@ -16,15 +18,19 @@ impl Key {
     }
 
     fn ls(&self, _: &ArgMatches) -> ExitCode {
-        let mut t = tabled::builder::Builder::new();
+        let mut table = tabled::builder::Builder::new();
+        let local = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
 
-        t.push_record(["ID"]);
+        table.push_record(["ID", "Imported Date"]);
 
-        for k in self.keymgr.keys() {
-            t.push_record([k.id().to_string()]);
+        for key in self.keymgr.keys() {
+            let id = key.id();
+            let imported = OffsetDateTime::from(key.created()).to_offset(local);
+
+            table.push_record([id.to_string(), imported.format(&Rfc2822).unwrap()]);
         }
 
-        println!("{}", t.build());
+        println!("{}", table.build());
 
         ExitCode::SUCCESS
     }
