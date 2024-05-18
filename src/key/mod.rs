@@ -1,11 +1,10 @@
 use self::store::{DefaultStore, Keystore};
-use crate::config::AppConfig;
 use crate::home::Home;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::iter::FusedIterator;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 use thiserror::Error;
 
@@ -14,36 +13,65 @@ mod store;
 /// Manage file encryption keys.
 pub struct KeyMgr {
     stores: HashMap<&'static str, Arc<dyn Keystore>>,
-    keys: HashMap<KeyId, Key>,
+    keys: RwLock<HashMap<KeyId, Arc<Key>>>,
 }
 
 impl KeyMgr {
-    pub fn new(home: &Arc<Home>, config: &Arc<AppConfig>) -> Result<Self, KeyMgrError> {
+    pub const DEFAULT_STORE: &'static str = "default";
+
+    pub fn new(home: &Arc<Home>) -> Result<Self, KeyMgrError> {
         let mut stores = HashMap::<&'static str, Arc<dyn Keystore>>::new();
         let mut keys = HashMap::new();
 
         // Initialize default store.
-        if config.key.default_storage {
-            let s = Arc::new(DefaultStore::new(home));
+        let store = Arc::new(DefaultStore::new(home));
 
-            for k in s.list() {
-                let k = k.map_err(|e| KeyMgrError::ListKeyFailed(s.id(), e))?;
+        for e in store.list() {
+            let k = e.map_err(|e| KeyMgrError::ListKeyFailed(store.id(), e))?;
 
-                assert!(keys.insert(k.id().clone(), k).is_none());
-            }
-
-            assert!(stores.insert(s.id(), s).is_none());
+            assert!(keys.insert(k.id().clone(), Arc::new(k)).is_none());
         }
 
-        Ok(Self { stores, keys })
+        assert!(stores.insert(store.id(), store).is_none());
+
+        Ok(Self {
+            stores,
+            keys: RwLock::new(keys),
+        })
+    }
+
+    pub fn has_keys(&self) -> bool {
+        !self.keys.read().unwrap().is_empty()
     }
 
     pub fn stores(&self) -> impl FusedIterator<Item = &dyn Keystore> {
         self.stores.values().map(|s| s.as_ref())
     }
 
-    pub fn keys(&self) -> impl ExactSizeIterator<Item = &Key> + FusedIterator {
-        self.keys.values()
+    pub fn generate(&self, store: &str) -> Result<Option<Arc<Key>>, Box<dyn Error>> {
+        // Get target store.
+        let store = match self.stores.get(store) {
+            Some(v) => v.clone(),
+            None => return Ok(None),
+        };
+
+        // Generate.
+        let key = Arc::new(store.generate()?);
+
+        assert!(self
+            .keys
+            .write()
+            .unwrap()
+            .insert(key.id().clone(), key.clone())
+            .is_none());
+
+        Ok(Some(key))
+    }
+
+    pub fn for_each_key(&self, mut f: impl FnMut(&Arc<Key>)) {
+        for k in self.keys.read().unwrap().values() {
+            f(k);
+        }
     }
 }
 

@@ -53,7 +53,7 @@ impl super::Command for Init {
 
     fn exec(&self, _: &ArgMatches) -> ExitCode {
         // Check if we have at least one key to encrypt.
-        if self.keymgr.keys().len() == 0 {
+        if !self.keymgr.has_keys() {
             eprintln!("No file encryption keys available, invoke Warp with '{} --help' to see how to create a new key.", Key::NAME);
             return ExitCode::FAILURE;
         }

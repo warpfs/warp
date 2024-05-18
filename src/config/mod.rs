@@ -1,3 +1,4 @@
+use crate::key::KeyMgr;
 use serde::Deserialize;
 use url::Url;
 
@@ -22,13 +23,13 @@ impl Default for AppConfig {
 #[derive(Deserialize)]
 #[serde(default)]
 pub struct Key {
-    pub default_storage: bool,
+    pub default_store: String,
 }
 
 impl Default for Key {
     fn default() -> Self {
         Self {
-            default_storage: true,
+            default_store: String::from(KeyMgr::DEFAULT_STORE),
         }
     }
 }

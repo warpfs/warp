@@ -7,7 +7,7 @@ edition = "2021"
 aes = "0.8.4"
 clap = "4.4"
 dirs = "5.0.1"
-erdp = "0.1.0"
+erdp = "0.1.1"
 getrandom = { version = "0.2.14", features = ["std"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_yaml = "0.9.34"

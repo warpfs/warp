@@ -46,7 +46,7 @@ fn main() -> ExitCode {
 
     // Load file encryption keys.
     let config = Arc::new(config);
-    let keymgr = match KeyMgr::new(&home, &config) {
+    let keymgr = match KeyMgr::new(&home) {
         Ok(v) => Arc::new(v),
         Err(e) => {
             eprintln!("Failed to load file encryption keys: {}.", e.display());
@@ -58,7 +58,7 @@ fn main() -> ExitCode {
     let mut args = clap::Command::new("warp");
     let commands: Vec<Box<dyn Command>> = vec![
         Box::new(self::cmd::Init::new(config.clone(), keymgr.clone())),
-        Box::new(self::cmd::Key::new(keymgr.clone())),
+        Box::new(self::cmd::Key::new(config.clone(), keymgr.clone())),
         Box::new(self::cmd::Keystore::new(keymgr.clone())),
     ];
 

@@ -1,6 +1,6 @@
 use super::Keystore;
 use crate::home::Home;
-use crate::key::{Key, KeyId};
+use crate::key::{Key, KeyId, KeyMgr};
 use aes::cipher::{BlockEncrypt, KeyInit};
 use aes::Aes128;
 use getrandom::getrandom;
@@ -201,7 +201,7 @@ impl DefaultStore {
 
 impl Keystore for DefaultStore {
     fn id(&self) -> &'static str {
-        "default"
+        KeyMgr::DEFAULT_STORE
     }
 
     fn list(self: &Arc<Self>) -> impl Iterator<Item = Result<Key, Box<dyn Error>>>
