@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use self::linux::KeyList;
 #[cfg(target_os = "macos")]
 use self::macos::KeyList;
 use super::Keystore;
@@ -16,6 +18,8 @@ use std::time::SystemTime;
 use thiserror::Error;
 use zeroize::Zeroizing;
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 
