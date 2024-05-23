@@ -49,13 +49,13 @@ impl Key {
         let mut table = tabled::builder::Builder::new();
         let local = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
 
-        table.push_record(["ID", "Imported Date"]);
+        table.push_record(["ID", "Created Date"]);
 
         self.keymgr.for_each_key(|key| {
             let id = key.id();
-            let imported = OffsetDateTime::from(key.created()).to_offset(local);
+            let created = OffsetDateTime::from(key.created()).to_offset(local);
 
-            table.push_record([id.to_string(), imported.format(&Rfc2822).unwrap()]);
+            table.push_record([id.to_string(), created.format(&Rfc2822).unwrap()]);
         });
 
         println!("{}", table.build());

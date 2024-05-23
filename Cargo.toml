@@ -9,6 +9,8 @@ clap = "4.4"
 dirs = "5.0.1"
 erdp = "0.1.1"
 getrandom = { version = "0.2.14", features = ["std"] }
+hex = "0.4.3"
+postcard = { version = "1.0.8", features = ["use-std"], default-features = false }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_yaml = "0.9.34"
 sha3 = "0.10.8"
@@ -17,7 +19,7 @@ thiserror = "1.0.58"
 time = { version = "0.3.36", features = ["formatting", "local-offset"] }
 ureq = "2.9.6"
 url = { version = "2.5.0", features = ["serde"] }
-zeroize = "1.7.0"
+zeroize = { version = "1.7.0", features = ["serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.9.4"

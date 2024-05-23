@@ -1,9 +1,11 @@
 use self::store::{DefaultStore, Keystore};
 use crate::home::Home;
+use hex::FromHexError;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::iter::FusedIterator;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 use thiserror::Error;
@@ -78,6 +80,16 @@ impl KeyMgr {
 /// Unique identifier of a [`Key`].
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct KeyId([u8; 16]);
+
+impl FromStr for KeyId {
+    type Err = FromHexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut v = [0; 16];
+        hex::decode_to_slice(s, &mut v)?;
+        Ok(Self(v))
+    }
+}
 
 impl AsRef<[u8; 16]> for KeyId {
     fn as_ref(&self) -> &[u8; 16] {
