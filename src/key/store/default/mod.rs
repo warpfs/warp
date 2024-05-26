@@ -2,6 +2,8 @@
 use self::linux::KeyList;
 #[cfg(target_os = "macos")]
 use self::macos::KeyList;
+#[cfg(target_os = "windows")]
+use self::windows::KeyList;
 use super::Keystore;
 use crate::home::Home;
 use crate::key::{Key, KeyId, KeyMgr};
@@ -22,6 +24,8 @@ use zeroize::Zeroizing;
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
 /// Implementation of [`Keystore`] using native key store of the OS.
 pub struct DefaultStore {
