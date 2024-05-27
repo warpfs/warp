@@ -9,6 +9,10 @@ Warp is a CLI program to resume your works on another computer. It work by pushi
 - Self-hosting supports.
 - Secure and private. All informations stored on the server are encrypted by your keys. These keys never leave your computer.
 
+## Usage
+
+Run `warp` inside the directory you want to resume on another computer then follow on-screen instructions.
+
 ## License
 
 GPLv3
