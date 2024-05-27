@@ -25,6 +25,8 @@ jobs:
       uses: actions/checkout@v4
     - name: Lint
       run: cargo clippy --workspace -- -D warnings
+    - name: Install x86_64-apple-darwin
+      run: rustup target add x86_64-apple-darwin
     - name: Build
       run: |
         cargo build --release --target aarch64-apple-darwin
@@ -33,7 +35,7 @@ jobs:
         lipo -create -output dist/bin/warp target/aarch64-apple-darwin/release/warp target/x86_64-apple-darwin/release/warp
     - name: Create Apple Disk Image
       run: hdiutil create -volname Warp -srcfolder dist Warp.dmg
-    - name: Upload
+    - name: Upload Apple Disk Image
       uses: actions/upload-artifact@v4
       with:
         name: warp-macos
